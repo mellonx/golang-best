@@ -6,6 +6,7 @@ import (
 
 	"github.com/mellonx/golang-best/internal/models"
 	"github.com/mellonx/golang-best/internal/repositories"
+	"github.com/mellonx/golang-best/pkg/logger"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -46,17 +47,21 @@ func NewUserService(repo repositories.UserRepository) UserService {
 func (s *userService) Create(ctx context.Context, req *CreateUserRequest) (*models.User, error) {
 	// 检查用户名是否存在
 	if _, err := s.repo.GetByUsername(ctx, req.Username); err == nil {
+		logger.WarnCtx(ctx, "Username already exists", "username", req.Username)
 		return nil, errors.New("username already exists")
 	}
 
 	// 检查邮箱是否存在
 	if _, err := s.repo.GetByEmail(ctx, req.Email); err == nil {
+		logger.WarnCtx(ctx, "Email already exists", "email", req.Email)
 		return nil, errors.New("email already exists")
 	}
 
 	// 加密密码
+	logger.DebugCtx(ctx, "Hashing password for user", "username", req.Username)
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
+		logger.ErrorCtx(ctx, "Failed to hash password", "error", err.Error())
 		return nil, err
 	}
 
@@ -68,7 +73,9 @@ func (s *userService) Create(ctx context.Context, req *CreateUserRequest) (*mode
 		IsActive: true,
 	}
 
+	logger.DebugCtx(ctx, "Creating user in database", "username", req.Username)
 	if err := s.repo.Create(ctx, user); err != nil {
+		logger.ErrorCtx(ctx, "Failed to create user in database", "error", err.Error())
 		return nil, err
 	}
 
@@ -77,14 +84,23 @@ func (s *userService) Create(ctx context.Context, req *CreateUserRequest) (*mode
 
 // GetByID 根据ID获取用户
 func (s *userService) GetByID(ctx context.Context, id uint) (*models.User, error) {
-	return s.repo.GetByID(ctx, id)
+	logger.DebugCtx(ctx, "Fetching user from database", "user_id", id)
+	user, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		logger.ErrorCtx(ctx, "Failed to fetch user", "user_id", id, "error", err.Error())
+		return nil, err
+	}
+	return user, nil
 }
 
 // List 获取用户列表
 func (s *userService) List(ctx context.Context, page, pageSize int) ([]models.User, int64, error) {
 	offset := (page - 1) * pageSize
+	logger.DebugCtx(ctx, "Fetching user list from database", "page", page, "page_size", pageSize, "offset", offset)
+
 	users, err := s.repo.List(ctx, offset, pageSize)
 	if err != nil {
+		logger.ErrorCtx(ctx, "Failed to fetch user list", "error", err.Error())
 		return nil, 0, err
 	}
 
@@ -94,8 +110,10 @@ func (s *userService) List(ctx context.Context, page, pageSize int) ([]models.Us
 
 // Update 更新用户
 func (s *userService) Update(ctx context.Context, id uint, req *UpdateUserRequest) (*models.User, error) {
+	logger.DebugCtx(ctx, "Fetching user for update", "user_id", id)
 	user, err := s.repo.GetByID(ctx, id)
 	if err != nil {
+		logger.ErrorCtx(ctx, "Failed to fetch user for update", "user_id", id, "error", err.Error())
 		return nil, err
 	}
 
@@ -106,7 +124,9 @@ func (s *userService) Update(ctx context.Context, id uint, req *UpdateUserReques
 		user.IsActive = *req.IsActive
 	}
 
+	logger.DebugCtx(ctx, "Updating user in database", "user_id", id)
 	if err := s.repo.Update(ctx, user); err != nil {
+		logger.ErrorCtx(ctx, "Failed to update user", "user_id", id, "error", err.Error())
 		return nil, err
 	}
 
@@ -115,5 +135,10 @@ func (s *userService) Update(ctx context.Context, id uint, req *UpdateUserReques
 
 // Delete 删除用户
 func (s *userService) Delete(ctx context.Context, id uint) error {
-	return s.repo.Delete(ctx, id)
+	logger.DebugCtx(ctx, "Deleting user from database", "user_id", id)
+	if err := s.repo.Delete(ctx, id); err != nil {
+		logger.ErrorCtx(ctx, "Failed to delete user", "user_id", id, "error", err.Error())
+		return err
+	}
+	return nil
 }
